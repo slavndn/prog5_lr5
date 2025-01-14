@@ -194,3 +194,6 @@ fetcher = CurrencyFetcher(cooldown=2)
 -   Что у меня есть инфа о каждой валюте.
 -   Что есть ограничение на количество запросов.
 -   Что графики строятся.
+-   
+
+![image](https://github.com/user-attachments/assets/44d37382-9962-4a35-9ca7-3d69a9397a3a)
