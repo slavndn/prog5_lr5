@@ -140,60 +140,120 @@ fetcher = CurrencyFetcher(cooldown=2)
 
 # Тесты 
 
-**1. Подготовка к тестам (импорты и фикстура):**
+```python
+import pytest
+from unittest.mock import patch
+from main import CurrencyFetcher
+import time
+```
 
--   `pytest`: Это как мой инструмент для создания тестов. С его помощью я могу удобно запускать тесты и проверять результаты.
--   `unittest.mock.patch`: Это мой чит-код. Он позволяет мне подменять реальные вещи (например, запрос к сайту) на подделки. Это полезно, чтобы не зависеть от реального интернета во время тестов.
--   `time`: Он мне нужен, чтобы проверять ограничения на количество запросов. 
--   `io.BytesIO`: Это для создания фейкового XML-ответа. 
+*   **`import pytest`**: Импортирует библиотеку `pytest`, которая используется для написания и запуска тестов.
+*   **`from unittest.mock import patch`**: Импортирует `patch` из `unittest.mock`. Это используется для замены (мокирования) объектов и функций во время тестов.
+*   **`from main import CurrencyFetcher`**: Импортирует класс `CurrencyFetcher` из файла `main.py`, который мы хотим протестировать.
+*   **`import time`**: Импортирует модуль `time`, который может быть использован в тестах.
 
-**2. Фикстура `fetcher` (подготовка данных):**
+```python
+@pytest.fixture(scope="module")
+def fetcher():
+    """Создает экземпляр CurrencyFetcher для использования в тестах."""
+    return CurrencyFetcher(cooldown=1)
+```
 
--   Я использую `@pytest.fixture` чтобы создать объект `CurrencyFetcher` для каждого теста.
--   `@patch('requests.get')` говорит, что нужно заменить функцию, которая ходит в интернет за курсами валют, на мою подделку.
--   Внутри `fetcher` я вызываю функцию `mock_xml_response` чтобы сделать мой собственный "ответ от сервера".
--   Я возвращаю объект `CurrencyFetcher` с задержкой в 1 секунду (это важно для теста ограничения запросов).
+*   **`@pytest.fixture(scope="module")`**: Это декоратор `pytest`, который определяет фикстуру (fixture). Фикстуры - это функции, которые предоставляют данные или ресурсы для тестов. `scope="module"` означает, что фикстура создается один раз для всего модуля тестов (то есть для всего файла `test.py`).
+*   **`def fetcher():`**:  Это определение функции-фикстуры. Она возвращает объект `CurrencyFetcher` с `cooldown` равным `1`. Теперь все тесты в этом файле могут использовать этот объект.
 
-**3. Функция `mock_xml_response` (фейковый XML):**
+```python
+def mock_xml_response():
+    """Возвращает фальшивый XML-ответ для тестирования."""
+    return '''<ValCurs Date="17.01.2025" name="Foreign Currency Market">
+                <Valute ID="R01035">
+                    <CharCode>GBP</CharCode>
+                    <Name>Фунт стерлингов</Name>
+                    <Value>100,25</Value>
+                    <Nominal>1</Nominal>
+                </Valute>
+                <Valute ID="R01335">
+                    <CharCode>PLN</CharCode>
+                    <Name>Польский злотый</Name>
+                    <Value>25,50</Value>
+                    <Nominal>10</Nominal>
+                </Valute>
+              </ValCurs>'''
+```
 
--   Эта функция делает фальшивый XML. 
--   Внутри XML у меня есть данные о двух валютах: фунт стерлингов (GBP) и польский злотый (PLN).
--   Я возвращаю эти данные как байтовый поток.
+*   **`def mock_xml_response():`**: Это функция, которая возвращает строку с фальшивым XML-ответом от сайта ЦБ РФ. Этот XML используется для мокирования запроса к сайту, чтобы тесты не зависели от реального сервера и данных.
 
-**4. Тест `test_singleton` (проверка синглтона):**
+```python
+def test_singleton_behavior():
+    """Тестирует, что CurrencyFetcher является синглтоном."""
+    instance1 = CurrencyFetcher()
+    instance2 = CurrencyFetcher()
+    assert instance1 is instance2, "Экземпляры CurrencyFetcher должны быть одинаковыми (синглтон)"
+```
 
--   Это проверка того, что мой `CurrencyFetcher` работает как синглтон.
--   Я создаю два объекта `CurrencyFetcher` и проверяю, что это один и тот же объект.
+*   **`def test_singleton_behavior():`**: Это тестовая функция, которая проверяет, что `CurrencyFetcher` работает как синглтон (то есть создается только один экземпляр).
+*   **`instance1 = CurrencyFetcher()`**: Создает первый экземпляр `CurrencyFetcher`.
+*   **`instance2 = CurrencyFetcher()`**: Создает второй экземпляр `CurrencyFetcher`.
+*   **`assert instance1 is instance2, ...`**: Использует оператор `assert`, чтобы проверить, что `instance1` и `instance2` — это один и тот же объект. Если это не так, то тест упадет.
 
-**5. Тест `test_fetch_currencies` (получение курсов):**
+```python
+@patch('requests.get')
+def test_fetch_currencies(mock_get, fetcher):
+    """Тестирует получение и сохранение валютных данных."""
+    mock_get.return_value.content = mock_xml_response()
+    result = fetcher.fetch_currencies(['R01035', 'R01335'])
+    assert len(result) == 2, "Должно вернуться две валюты"
+    assert 'GBP' in fetcher._currencies, "GBP должна быть в сохраненных валютах"
+    assert fetcher._currencies['GBP'] == ('Фунт стерлингов', ('100', '25'), 1)
+```
 
--   Я прошу `fetcher` получить курсы для GBP и PLN, и сверяю результат с тем, что я ожидаю.
+*   **`@patch('requests.get')`**: Декоратор `patch` заменяет функцию `requests.get` на объект-заглушку `mock_get`. Это позволяет контролировать поведение запроса к сайту ЦБ РФ.
+*   **`def test_fetch_currencies(mock_get, fetcher):`**: Тестовая функция, которая проверяет корректность работы метода `fetch_currencies` класса `CurrencyFetcher`.
+*   **`mock_get.return_value.content = mock_xml_response()`**: Устанавливает ответ `mock_get` так, чтобы он возвращал фальшивый XML-ответ.
+*   **`result = fetcher.fetch_currencies(['R01035', 'R01335'])`**: Вызывает `fetch_currencies` с двумя ID валют и сохраняет результат.
+*   **`assert len(result) == 2, ...`**: Проверяет, что было возвращено два объекта в списке `result` (т.е., что были получены данные для двух валют).
+*   **`assert 'GBP' in fetcher._currencies, ...`**: Проверяет, что код валюты 'GBP' присутствует в словаре `fetcher._currencies` (то есть, что данные о валюте были сохранены).
+*   **`assert fetcher._currencies['GBP'] == ('Фунт стерлингов', ('100', '25'), 1)`**: Проверяет, что сохраненные данные для GBP соответствуют ожидаемым значениям.
 
-**6. Тест `test_get_currency_info` (информация о валюте):**
+```python
+@patch('time.time', side_effect=[0, 1.5, 3])
+@patch('requests.get')
+def test_cooldown(mock_get, mock_time, fetcher):
+    """Тестирует соблюдение периода ожидания между запросами."""
+    mock_get.return_value.content = mock_xml_response()
+    fetcher.fetch_currencies(['R01035'])  # Первый вызов успешен
+    with pytest.raises(Exception, match="Запросы можно делать не чаще"):
+        fetcher.fetch_currencies(['R01035'])  # Второй вызов слишком рано
+    fetcher.fetch_currencies(['R01035'])  # Третий вызов должен быть успешен
+```
 
--   Я запрашиваю инфу по GBP и сверяю с тем, что должно быть.
+*   **`@patch('time.time', side_effect=[0, 1.5, 3])`**:  `patch` заменяет `time.time` на мок, который будет возвращать значения `0`, `1.5` и `3` по очереди при каждом вызове.
+*   **`@patch('requests.get')`**: Аналогично, заменяем `requests.get`.
+*   **`def test_cooldown(mock_get, mock_time, fetcher):`**:  Тестовая функция, которая проверяет, что `fetch_currencies` соблюдает `cooldown`.
+*   **`mock_get.return_value.content = mock_xml_response()`**: Устанавливает `mock_get` для возврата фальшивого ответа.
+*   **`fetcher.fetch_currencies(['R01035'])`**:  Первый вызов `fetch_currencies`, должен пройти успешно.
+*   **`with pytest.raises(Exception, match="Запросы можно делать не чаще"):`**: Ожидает, что следующий вызов `fetch_currencies` вызовет исключение.
+*   **`fetcher.fetch_currencies(['R01035'])`**:  Второй вызов, должен вызвать ошибку.
+*   **`fetcher.fetch_currencies(['R01035'])`**: Третий вызов `fetch_currencies`, должен пройти успешно (так как прошло достаточно времени).
 
-**7. Тест `test_cooldown` (ограничение запросов):**
+```python
+@patch('matplotlib.pyplot.show')
+def test_visualize_currencies(mock_show, fetcher):
+    """Тестирует построение и отображение графика."""
+    fetcher._currencies = {
+        'GBP': ('Фунт стерлингов', ('100', '25'), 1),
+        'PLN': ('Польский злотый', ('25', '50'), 10)
+    }
+    fetcher.visualize_currencies()
+    mock_show.assert_called_once()
+```
+*   **`@patch('matplotlib.pyplot.show')`**: Заменяет `plt.show` моком `mock_show`.
+*   **`def test_visualize_currencies(mock_show, fetcher):`**: Тест для проверки отрисовки графика.
+*   **`fetcher._currencies = {...}`**: Создаем тестовые данные для отрисовки.
+*   **`fetcher.visualize_currencies()`**:  Вызываем функцию отрисовки.
+*   **`mock_show.assert_called_once()`**: Проверяем, что метод `plt.show()` был вызван один раз.
 
--   Это важный тест для проверки, что есть ограничение на количество запросов в секунду.
--   Сначала я делаю запрос, потом делаю еще один, который должен упасть (и это хорошо).
--   Я жду 1 секунду и делаю запрос снова, и он должен пройти.
-
-**8. Тест `test_visualize_currencies` (визуализация):**
-
--   Здесь я тестирую визуализацию курсов (график).
--   `@patch('matplotlib.pyplot.show')` подменяет показ графика 
--   Я вызываю метод, который строит график, и проверяю, что всё ок.
-
-**В итоге:**
-
-Я проверяю:
-
--   Что мой класс синглтон.
--   Что правильно получаю курсы валют.
--   Что у меня есть инфа о каждой валюте.
--   Что есть ограничение на количество запросов.
--   Что графики строятся.
--   
 
 ![image](https://github.com/user-attachments/assets/44d37382-9962-4a35-9ca7-3d69a9397a3a)
+![image](https://github.com/user-attachments/assets/3f91165d-1c93-45a5-a0ed-6b53ee8f3e18)
+
